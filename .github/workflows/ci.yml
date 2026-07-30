@@ -1,0 +1,36 @@
+# CI: roda em todo pull request para a main (e em pushes na main).
+# O deploy em si é feito pela integração Git da Vercel após o merge.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Testes e build
+    runs-on: ubuntu-latest
+    env:
+      # O build não conecta no banco (páginas são dinâmicas), mas o Prisma
+      # exige a variável definida.
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+      AUTH_SECRET: "ci-apenas"
+      NEXT_PUBLIC_URL: "http://localhost:3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testes de domínio
+        run: npm test
+
+      - name: Build de produção
+        run: npm run build

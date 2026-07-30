@@ -1,12 +1,12 @@
-// Em produção, troque provider para "postgresql" e rode `npm run db:deploy`.
-// Ver docs/DEPLOY.md §3.
+// PostgreSQL em todos os ambientes (produção: Neon/Vercel Postgres; dev
+// local: docker-compose ou um branch de dev no Neon). Ver docs/DEPLOY.md.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
