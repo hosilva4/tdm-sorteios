@@ -1,0 +1,131 @@
+// Em produção, troque provider para "postgresql" e rode `npm run db:deploy`.
+// Ver docs/DEPLOY.md §3.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id         String       @id @default(cuid())
+  email      String       @unique
+  nome       String
+  senhaHash  String
+  // Sorteios avulsos disponíveis (comprados e ainda não usados)
+  creditos   Int          @default(0)
+  criadoEm   DateTime     @default(now())
+  assinatura Assinatura?
+  sorteios   Sorteio[]
+  pagamentos Pagamento[]
+}
+
+model Assinatura {
+  id                 String    @id @default(cuid())
+  usuarioId          String    @unique
+  usuario            Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  // pendente | ativa | suspensa | cancelada
+  status             String    @default("pendente")
+  pagbankId          String?   @unique // id da subscription no PagBank (SUBS_...)
+  // Data de validade do ciclo mensal: renovação automática (cobrança no cartão) nessa data.
+  proximaCobrancaEm  DateTime?
+  // Exibição da forma de pagamento da renovação (dados não sensíveis)
+  cartaoBandeira     String?
+  cartaoUltimos4     String?
+  criadaEm           DateTime  @default(now())
+  atualizadaEm       DateTime  @updatedAt
+}
+
+// Chave-valor para configurações criadas em runtime (ex.: id do plano mensal no PagBank)
+model Config {
+  chave String @id
+  valor String
+}
+
+model Pagamento {
+  id            String   @id @default(cuid())
+  usuarioId     String
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  // avulso | assinatura
+  tipo          String
+  // pendente | aprovado | recusado | cancelado
+  status        String   @default("pendente")
+  valorCentavos Int
+  // pix | cartao | null (desconhecido até o webhook)
+  metodo        String?
+  // ids do PagBank para conciliação e idempotência
+  pagbankOrderId  String? @unique
+  pagbankChargeId String? @unique
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+}
+
+model Sorteio {
+  id                String         @id @default(cuid())
+  usuarioId         String
+  usuario           Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  nome              String
+  // residencial | comercial: muda o rótulo do agrupador no cadastro
+  // (Apartamento/bloco em residencial, Setor em comercial)
+  tipoPredio        String         @default("residencial")
+  // O primeiro sorteio de ganhador consome 1 crédito (se não houver assinatura ativa)
+  pago              Boolean        @default(false)
+  umaChancePorGrupo Boolean        @default(false)
+  // Regras do cadastro no evento (definidas no wizard)
+  regraLgpd         Boolean        @default(false)
+  regraMaiorIdade   Boolean        @default(false)
+  // Token das páginas públicas do evento (/participar e /telao)
+  tokenPublico      String         @unique @default(cuid())
+  criadoEm          DateTime       @default(now())
+  participantes     Participante[]
+  ganhadores        Ganhador[]
+  premios           Premio[]
+}
+
+model Premio {
+  id         String  @id @default(cuid())
+  sorteioId  String
+  sorteio    Sorteio @relation(fields: [sorteioId], references: [id], onDelete: Cascade)
+  // Ordem de sorteio: as posições dos ganhadores percorrem os prêmios
+  // na ordem, respeitando a quantidade de cada um.
+  ordem      Int
+  // cupom | voucher | brinde | outro
+  tipo       String
+  descricao  String  @default("")
+  quantidade Int     @default(1)
+
+  @@unique([sorteioId, ordem])
+}
+
+model Participante {
+  id        String    @id @default(cuid())
+  sorteioId String
+  sorteio   Sorteio   @relation(fields: [sorteioId], references: [id], onDelete: Cascade)
+  nome      String
+  // "grupo" = apartamento/bloco (residencial) ou setor (comercial),
+  // o agrupador para "uma chance por grupo"
+  grupo     String    @default("")
+  telefone  String    @default("")
+  email     String    @default("")
+  // Registro das declarações feitas no cadastro (quando as regras exigem)
+  aceitouLgpd        Boolean @default(false)
+  declarouMaiorIdade Boolean @default(false)
+  criadoEm  DateTime  @default(now())
+  ganhador  Ganhador?
+}
+
+model Ganhador {
+  id             String       @id @default(cuid())
+  sorteioId      String
+  sorteio        Sorteio      @relation(fields: [sorteioId], references: [id], onDelete: Cascade)
+  participanteId String       @unique
+  participante   Participante @relation(fields: [participanteId], references: [id], onDelete: Cascade)
+  posicao        Int
+  tamanhoUrna    Int
+  sorteadoEm     DateTime     @default(now())
+
+  @@unique([sorteioId, posicao])
+}
