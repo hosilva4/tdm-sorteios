@@ -1,3 +1,5 @@
+import "server-only";
+
 // Conciliação com o PagBank: usada pelo webhook e pela verificação manual.
 // Nunca confiamos no corpo da notificação; sempre reconsultamos a API antes
 // de mudar qualquer coisa no banco.

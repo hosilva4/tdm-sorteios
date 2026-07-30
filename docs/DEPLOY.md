@@ -37,7 +37,7 @@ local sem internet: `docker compose up -d` (Postgres em
    | --- | --- |
    | `DATABASE_URL` | connection string do Neon (com pooling) |
    | `AUTH_SECRET` | gere um novo: `openssl rand -base64 32` (nunca reuse o de dev) |
-   | `NEXT_PUBLIC_URL` | `https://SEU-DOMINIO` (sem barra no final) |
+   | `NEXT_PUBLIC_URL` | `https://sorteio4u.com.br` (sem barra no final) |
    | `PAGBANK_ENV` | `sandbox` até validar o fluxo; depois `production` |
    | `PAGBANK_TOKEN` | token da conta PagBank |
    | `NEXT_PUBLIC_PAGBANK_PUBLIC_KEY` | chave pública do PagBank |
@@ -61,13 +61,13 @@ local sem internet: `docker compose up -d` (Postgres em
    nameservers que ela mostrar.)
 3. Aguarde a propagação (minutos a algumas horas). O certificado HTTPS é
    emitido automaticamente.
-4. Atualize `NEXT_PUBLIC_URL` na Vercel para `https://SEU-DOMINIO` e faça um
+4. Atualize `NEXT_PUBLIC_URL` na Vercel para `https://sorteio4u.com.br` e faça um
    **Redeploy** (a variável é usada nos QR Codes do evento e no webhook).
 
 ## 4. PagBank em produção
 
 1. Com o site no ar, cadastre a URL de notificação na conta PagBank
-   (pedidos e assinaturas): `https://SEU-DOMINIO/api/webhooks/pagbank`.
+   (pedidos e assinaturas): `https://sorteio4u.com.br/api/webhooks/pagbank`.
 2. Valide primeiro em `PAGBANK_ENV=sandbox`: compra avulsa via PIX,
    assinatura no cartão, renovação, suspensão e cancelamento.
 3. Troque para `PAGBANK_ENV=production` com o token e a chave pública de
@@ -115,3 +115,41 @@ npm run dev
 ```
 
 Sem Docker, use a connection string do branch `dev` do Neon no `.env`.
+
+## 8. Segurança do token PagBank (e demais segredos)
+
+Como o token é protegido contra captura:
+
+- **Nunca chega ao navegador.** `PAGBANK_TOKEN` não tem o prefixo
+  `NEXT_PUBLIC_`, então o Next.js não o inclui em nenhum bundle enviado ao
+  cliente. Reforço: `src/lib/pagbank.ts` importa `server-only`, o que faz o
+  **build falhar** se algum componente cliente tentar importar o módulo.
+- **Nenhuma API expõe o valor.** Não existe endpoint ou server action que
+  leia e devolva variáveis de ambiente; as mensagens de erro ao usuário são
+  genéricas e os logs do servidor não registram o token (só respostas da
+  API PagBank, que não o contêm).
+- **Em repouso:** o token vive apenas nas Environment Variables da Vercel
+  (criptografadas) e no `.env` local, que está no `.gitignore` e nunca foi
+  commitado. No repositório só existe `.env.example` com placeholders.
+- **Em trânsito:** toda chamada à API PagBank sai do servidor via HTTPS, e
+  o site força HTTPS no navegador com HSTS (2 anos, preload).
+- **Cabeçalhos de segurança** (`next.config.ts`): HSTS,
+  `X-Frame-Options: DENY` + `frame-ancestors 'none'` (anti-clickjacking),
+  `nosniff`, `Referrer-Policy` e `Permissions-Policy` restritos,
+  `X-Powered-By` removido.
+- **O que o navegador usa é outra chave:** o formulário de cartão usa a
+  `NEXT_PUBLIC_PAGBANK_PUBLIC_KEY`, que é **pública por design** (serve só
+  para criptografar o cartão no dispositivo do cliente; não autoriza nada).
+- **Webhook não confia em ninguém:** `/api/webhooks/pagbank` ignora o corpo
+  recebido e reconsulta a API oficial antes de alterar o banco; um atacante
+  que chame o webhook não consegue creditar nada nem extrair informação.
+
+Cuidados operacionais:
+
+1. Cadastre o token **direto na Vercel** (Production), sem colar em chats,
+   commits ou arquivos versionados.
+2. Use tokens distintos para sandbox e produção.
+3. Se houver qualquer suspeita de vazamento, **revogue e gere outro** no
+   painel PagBank e atualize a variável na Vercel (Redeploy aplica).
+4. Restrinja quem tem acesso ao projeto na Vercel e à organização TDM4U no
+   GitHub (2FA obrigatório é recomendado).

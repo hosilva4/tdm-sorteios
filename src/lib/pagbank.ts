@@ -1,3 +1,8 @@
+// Este módulo NUNCA pode chegar ao navegador: o import de "server-only"
+// faz o build falhar se algum componente cliente tentar importá-lo,
+// garantindo que PAGBANK_TOKEN fica restrito ao servidor.
+import "server-only";
+
 // Cliente da API PagBank (avaliada em developer.pagbank.com.br/reference).
 // Duas famílias de endpoints:
 //  - Orders API (pedidos avulsos, PIX): {api|sandbox.api}.pagseguro.com
