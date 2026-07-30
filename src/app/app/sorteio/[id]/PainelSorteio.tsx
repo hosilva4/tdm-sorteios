@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   adicionarParticipante,
   atualizarPremios,
@@ -643,7 +643,12 @@ interface PremioEditavel {
   quantidade: number;
 }
 
-/** Edição dos prêmios, permitida apenas antes do primeiro ganhador. */
+const ATRASO_SALVAMENTO_MS = 900;
+
+/**
+ * Edição dos prêmios, permitida apenas antes do primeiro ganhador.
+ * As alterações são salvas automaticamente (com debounce).
+ */
 function EditorPremios({
   premiosIniciais,
   aoSalvar,
@@ -662,9 +667,26 @@ function EditorPremios({
   );
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const primeiraRenderizacao = useRef(true);
+
+  // Salvamento automático: espera o usuário parar de digitar e envia a lista.
+  useEffect(() => {
+    if (primeiraRenderizacao.current) {
+      primeiraRenderizacao.current = false;
+      return;
+    }
+    setSalvo(false);
+    const timer = setTimeout(async () => {
+      setSalvando(true);
+      const ok = await aoSalvar(lista);
+      setSalvando(false);
+      setSalvo(ok);
+    }, ATRASO_SALVAMENTO_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lista]);
 
   function mudar(indice: number, mudanca: Partial<PremioEditavel>) {
-    setSalvo(false);
     setLista((atual) =>
       atual.map((p, i) => (i === indice ? { ...p, ...mudanca } : p))
     );
@@ -676,7 +698,7 @@ function EditorPremios({
     <div>
       <p className="texto-suave texto-pequeno" style={{ marginTop: 0 }}>
         Os prêmios podem ser ajustados até o primeiro ganhador ser sorteado.
-        Eles saem na ordem abaixo.
+        Eles saem na ordem abaixo e as alterações são salvas automaticamente.
       </p>
       {lista.map((p, i) => (
         <div className="linha-premio" key={i}>
@@ -720,10 +742,9 @@ function EditorPremios({
           {lista.length > 1 && (
             <button
               className="botao botao-perigo botao-pequeno"
-              onClick={() => {
-                setSalvo(false);
-                setLista((atual) => atual.filter((_, j) => j !== i));
-              }}
+              onClick={() =>
+                setLista((atual) => atual.filter((_, j) => j !== i))
+              }
             >
               ✕
             </button>
@@ -733,31 +754,19 @@ function EditorPremios({
       <div className="linha-flex">
         <button
           className="botao botao-secundario botao-pequeno"
-          onClick={() => {
-            setSalvo(false);
+          onClick={() =>
             setLista((atual) => [
               ...atual,
               { tipo: "brinde", descricao: "", quantidade: 1 },
-            ]);
-          }}
+            ])
+          }
         >
           + Adicionar prêmio
         </button>
-        <button
-          className="botao botao-pequeno"
-          disabled={salvando}
-          onClick={async () => {
-            setSalvando(true);
-            const ok = await aoSalvar(lista);
-            setSalvando(false);
-            setSalvo(ok);
-          }}
-        >
-          {salvando ? "Salvando…" : "Salvar prêmios"}
-        </button>
         <span className="texto-suave texto-pequeno">
           {totalGanhadores} {totalGanhadores === 1 ? "ganhador" : "ganhadores"}{" "}
-          no total{salvo && " · salvo ✓"}
+          no total
+          {salvando ? " · salvando…" : salvo ? " · salvo automaticamente ✓" : ""}
         </span>
       </div>
     </div>
