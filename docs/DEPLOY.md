@@ -7,20 +7,31 @@ O deploy é contínuo: todo merge de pull request na branch **`main`** do
 repositório `TDM4U/sorteio4u` publica automaticamente a nova versão em
 produção; todo pull request aberto ganha um **preview** com URL própria.
 
-## 1. Banco de dados (Neon)
+## 1. Banco de dados (Supabase)
 
-1. Crie uma conta em https://neon.tech (plano free atende o início).
-2. Crie o projeto `tdm-sorteios` na região `sa-east-1` (São Paulo, menor
-   latência) e copie a **connection string** com pooling
-   (`postgresql://...-pooler.../neondb?sslmode=require`).
-3. Guarde a string: ela será o `DATABASE_URL` na Vercel. As migrações são
-   aplicadas automaticamente no deploy (o script `vercel-build` roda
-   `prisma migrate deploy` antes do build).
+1. Crie a conta em https://supabase.com (pode entrar com o GitHub; o plano
+   free não pede cartão).
+2. **New project**: nome `sorteio4u`, região **South America (São Paulo)**,
+   defina uma senha forte para o banco e guarde-a.
+3. Com o projeto criado, clique em **Connect** (topo do painel) e copie as
+   duas connection strings da aba ORMs/Prisma:
+   - **Transaction pooler** (porta `6543`): será o `DATABASE_URL`. Acrescente
+     `?pgbouncer=true&connection_limit=1` ao final se ainda não vier.
+   - **Session pooler ou Direct connection** (porta `5432`): será o
+     `DIRECT_URL`, usado apenas pelas migrações no deploy.
+4. Substitua `[YOUR-PASSWORD]` nas duas strings pela senha do passo 2.
+5. Na Vercel, cadastre **as duas** variáveis (`DATABASE_URL` e
+   `DIRECT_URL`). As migrações são aplicadas automaticamente no deploy (o
+   script `vercel-build` roda `prisma migrate deploy` antes do build).
 
-Dica: crie um **branch** de banco no Neon chamado `dev` e use a connection
-string dele no seu `.env` local, mantendo produção isolada. Alternativa
-local sem internet: `docker compose up -d` (Postgres em
-`postgresql://tdm:tdm@localhost:5432/tdm_sorteios`).
+Por que duas strings: em serverless o app precisa do **pooler** (muitas
+conexões curtas), mas migrações precisam de **conexão direta**; o schema do
+Prisma já está configurado com `url` + `directUrl` para isso.
+
+Alternativas gratuitas, se preferir: Prisma Postgres (prisma.io, integra
+pela marketplace da Vercel) ou Neon. Em dev local nada muda:
+`docker compose up -d` (Postgres em
+`postgresql://tdm:tdm@localhost:5432/tdm_sorteios`, com `DIRECT_URL` igual).
 
 ## 2. Vercel (hospedagem + deploy contínuo)
 
@@ -35,7 +46,8 @@ local sem internet: `docker compose up -d` (Postgres em
 
    | Variável | Valor |
    | --- | --- |
-   | `DATABASE_URL` | connection string do Neon (com pooling) |
+   | `DATABASE_URL` | pooler de transação do Supabase (porta 6543, `?pgbouncer=true`) |
+   | `DIRECT_URL` | conexão direta/sessão do Supabase (porta 5432) |
    | `AUTH_SECRET` | gere um novo: `openssl rand -base64 32` (nunca reuse o de dev) |
    | `NEXT_PUBLIC_URL` | `https://sorteio4u.com.br` (sem barra no final) |
    | `PAGBANK_ENV` | `sandbox` até validar o fluxo; depois `production` |
@@ -93,7 +105,7 @@ novo.
 
 ## 6. Checklist do primeiro deploy
 
-- [ ] Projeto Neon criado e `DATABASE_URL` na Vercel.
+- [ ] Projeto Supabase criado; `DATABASE_URL` e `DIRECT_URL` na Vercel.
 - [ ] `AUTH_SECRET` novo e exclusivo de produção.
 - [ ] Primeiro deploy verde na URL `.vercel.app`.
 - [ ] Domínio apontado e HTTPS ativo.
@@ -109,12 +121,13 @@ O SQLite foi descontinuado; o dev local usa Postgres:
 
 ```sh
 docker compose up -d          # sobe o Postgres local
-# .env: DATABASE_URL="postgresql://tdm:tdm@localhost:5432/tdm_sorteios"
+# .env: DATABASE_URL e DIRECT_URL = "postgresql://tdm:tdm@localhost:5432/tdm_sorteios"
 npm run db:migrate            # aplica migrações (e roda o seed)
 npm run dev
 ```
 
-Sem Docker, use a connection string do branch `dev` do Neon no `.env`.
+Sem Docker, crie um segundo projeto free no Supabase só para dev e use as
+connection strings dele no `.env`.
 
 ## 8. Segurança do token PagBank (e demais segredos)
 

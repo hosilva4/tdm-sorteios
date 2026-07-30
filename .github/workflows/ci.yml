@@ -16,6 +16,7 @@ jobs:
       # O build não conecta no banco (páginas são dinâmicas), mas o Prisma
       # exige a variável definida.
       DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+      DIRECT_URL: "postgresql://ci:ci@localhost:5432/ci"
       AUTH_SECRET: "ci-apenas"
       NEXT_PUBLIC_URL: "http://localhost:3000"
     steps:
