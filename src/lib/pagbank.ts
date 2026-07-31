@@ -31,8 +31,15 @@ export function pagbankAssinaturasBaseUrl(): string {
     : "https://sandbox.api.assinaturas.pagseguro.com";
 }
 
-function urlWebhook(): string {
-  return `${process.env.NEXT_PUBLIC_URL ?? "http://localhost:3000"}/api/webhooks/pagbank`;
+/**
+ * URLs de notificação do pedido. O PagBank só aceita webhooks HTTPS
+ * públicos; em dev (http://localhost) retornamos vazio e a confirmação
+ * acontece pelo botão "Já paguei, verificar".
+ */
+function urlsNotificacao(): string[] {
+  const base = process.env.NEXT_PUBLIC_URL ?? "";
+  if (!base.startsWith("https://")) return [];
+  return [`${base}/api/webhooks/pagbank`];
 }
 
 export class ErroPagbank extends Error {
@@ -182,7 +189,9 @@ export async function criarPedidoPix(dados: {
       qr_codes: [
         { amount: { value: PRECO_AVULSO_CENTAVOS }, expiration_date: expiraEm },
       ],
-      notification_urls: [urlWebhook()],
+      ...(urlsNotificacao().length > 0
+        ? { notification_urls: urlsNotificacao() }
+        : {}),
     }),
   });
 
