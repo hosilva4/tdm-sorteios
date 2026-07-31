@@ -51,8 +51,8 @@ pela marketplace da Vercel) ou Neon. Em dev local nada muda:
    | `AUTH_SECRET` | gere um novo: `openssl rand -base64 32` (nunca reuse o de dev) |
    | `NEXT_PUBLIC_URL` | `https://sorteio4u.com.br` (sem barra no final) |
    | `PAGBANK_ENV` | `sandbox` até validar o fluxo; depois `production` |
-   | `PAGBANK_TOKEN` | token da conta PagBank |
-   | `NEXT_PUBLIC_PAGBANK_PUBLIC_KEY` | chave pública do PagBank |
+   | `PAGBANK_TOKEN` | token da conta PagBank (sandbox e produção têm tokens distintos) |
+   | `NEXT_PUBLIC_PAGBANK_PUBLIC_KEY` | só em sandbox: a chave pública padrão do ambiente. Em produção, deixe sem valor: o app gera/consulta a chave via API com o token e guarda na tabela `Config` |
 
 4. Clique em **Deploy**. Ao final, o site sobe em
    `https://sorteio4u.vercel.app` (URL provisória).

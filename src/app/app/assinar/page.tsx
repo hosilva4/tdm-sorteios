@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { exigirUsuario } from "@/lib/usuario-atual";
-import { pagbankConfigurado } from "@/lib/pagbank";
+import { obterChavePublicaCartao, pagbankConfigurado } from "@/lib/pagbank";
 import { PRECO_ASSINATURA_CENTAVOS, formatarReais } from "@/lib/precos";
 import { FormAssinatura } from "./FormAssinatura";
 
@@ -9,7 +9,9 @@ export default async function PaginaAssinar() {
   const usuario = await exigirUsuario();
   if (usuario.assinaturaAtiva) redirect("/app/perfil");
 
-  const chavePublica = process.env.NEXT_PUBLIC_PAGBANK_PUBLIC_KEY ?? "";
+  // Sandbox: chave padrão via env. Produção: gerada/consultada na API e
+  // guardada na tabela Config (não precisa configurar variável).
+  const chavePublica = await obterChavePublicaCartao();
   const pronto = pagbankConfigurado() && chavePublica;
 
   return (
@@ -36,9 +38,9 @@ export default async function PaginaAssinar() {
           />
         ) : (
           <div className="aviso-info">
-            A assinatura ainda não está disponível neste ambiente: faltam
-            PAGBANK_TOKEN e NEXT_PUBLIC_PAGBANK_PUBLIC_KEY (ver docs/DEPLOY.md,
-            seção 4).
+            A assinatura ainda não está disponível neste ambiente: configure o
+            PAGBANK_TOKEN (e, em sandbox, a chave pública padrão em
+            NEXT_PUBLIC_PAGBANK_PUBLIC_KEY). Ver docs/DEPLOY.md, seção 4.
           </div>
         )}
       </div>

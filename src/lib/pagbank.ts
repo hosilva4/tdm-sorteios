@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { PRECO_ASSINATURA_CENTAVOS, PRECO_AVULSO_CENTAVOS } from "@/lib/precos";
 
 const CHAVE_PLANO = "pagbank_plano_mensal_id";
+const CHAVE_PUBLICA_CONFIG = "pagbank_chave_publica_producao";
 
 export function pagbankConfigurado(): boolean {
   return Boolean(process.env.PAGBANK_TOKEN);
@@ -72,6 +73,64 @@ async function chamar<T>(
     );
   }
   return corpo as T;
+}
+
+// ---------- chave pública (criptografia de cartão no navegador) ----------
+
+interface RespostaChavePublica {
+  public_key?: string;
+}
+
+/**
+ * Chave pública usada pelo SDK no navegador para criptografar o cartão.
+ * Sandbox: usa a chave padrão informada em NEXT_PUBLIC_PAGBANK_PUBLIC_KEY.
+ * Produção: é gerada uma única vez via API (POST /public-keys), guardada na
+ * tabela Config e reutilizada; a env var, se definida, tem precedência.
+ */
+export async function obterChavePublicaCartao(): Promise<string> {
+  const daEnv = process.env.NEXT_PUBLIC_PAGBANK_PUBLIC_KEY;
+  if (daEnv) return daEnv;
+
+  if (process.env.PAGBANK_ENV !== "production" || !pagbankConfigurado()) {
+    return "";
+  }
+
+  const salva = await db.config.findUnique({
+    where: { chave: CHAVE_PUBLICA_CONFIG },
+  });
+  if (salva) return salva.valor;
+
+  let chave = "";
+  try {
+    // A chave é única por conta: consulta primeiro; se não existir, cria.
+    const existente = await chamar<RespostaChavePublica>(
+      pagbankBaseUrl(),
+      "/public-keys/card",
+      { method: "GET" }
+    );
+    chave = existente.public_key ?? "";
+  } catch {
+    try {
+      const criada = await chamar<RespostaChavePublica>(
+        pagbankBaseUrl(),
+        "/public-keys",
+        { method: "POST", body: JSON.stringify({ type: "card" }) }
+      );
+      chave = criada.public_key ?? "";
+    } catch (e) {
+      console.error("obterChavePublicaCartao:", e);
+      return "";
+    }
+  }
+
+  if (chave) {
+    await db.config.upsert({
+      where: { chave: CHAVE_PUBLICA_CONFIG },
+      create: { chave: CHAVE_PUBLICA_CONFIG, valor: chave },
+      update: { valor: chave },
+    });
+  }
+  return chave;
 }
 
 // ---------- Orders API: compra avulsa via PIX ----------
