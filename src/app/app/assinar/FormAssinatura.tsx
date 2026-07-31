@@ -74,6 +74,9 @@ export function FormAssinatura({
     dados.set("cpf", String(campos.get("cpf") ?? ""));
     dados.set("celular", String(campos.get("celular") ?? ""));
     dados.set("cartaoCriptografado", criptografia.encryptedCard);
+    // A API de assinaturas exige o CVV junto do cartão criptografado
+    // (card.security_code); ele não é armazenado em lugar nenhum.
+    dados.set("cvv", String(campos.get("cvv") ?? ""));
     dados.set("ultimos4", numero.slice(-4));
     dados.set("bandeira", bandeiraDoNumero(numero));
 

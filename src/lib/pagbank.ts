@@ -277,6 +277,9 @@ export async function criarAssinaturaPagbank(dados: {
   cpf: string;
   telefone: { ddd: string; numero: string };
   cartaoCriptografado: string;
+  // Exigido pela API junto do cartão criptografado (card.security_code).
+  // Passa direto ao PagBank; nunca é gravado nem logado.
+  cvv: string;
   titularCartao: string;
 }): Promise<RespostaAssinatura> {
   const planoId = await garantirPlanoMensal();
@@ -284,6 +287,7 @@ export async function criarAssinaturaPagbank(dados: {
     type: "CREDIT_CARD",
     card: {
       encrypted: dados.cartaoCriptografado,
+      security_code: dados.cvv,
       holder: { name: dados.titularCartao },
     },
   };

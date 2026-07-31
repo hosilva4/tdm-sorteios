@@ -139,6 +139,7 @@ const esquemaAssinatura = z.object({
   cartaoCriptografado: z
     .string()
     .min(10, "Não foi possível ler os dados do cartão. Confira e tente de novo."),
+  cvv: z.string().regex(/^\d{3,4}$/, "CVV inválido."),
   ultimos4: z.string().regex(/^\d{4}$/).catch(""),
   bandeira: z.string().max(20).catch(""),
 });
@@ -162,6 +163,7 @@ export async function assinarPlano(
     cpf: String(formData.get("cpf") ?? ""),
     celular: String(formData.get("celular") ?? ""),
     cartaoCriptografado: String(formData.get("cartaoCriptografado") ?? ""),
+    cvv: String(formData.get("cvv") ?? ""),
     ultimos4: String(formData.get("ultimos4") ?? ""),
     bandeira: String(formData.get("bandeira") ?? ""),
   });
@@ -177,6 +179,7 @@ export async function assinarPlano(
       cpf: dados.data.cpf,
       telefone: { ddd: celular.slice(0, 2), numero: celular.slice(2) },
       cartaoCriptografado: dados.data.cartaoCriptografado,
+      cvv: dados.data.cvv,
       titularCartao: dados.data.titular,
     });
 
