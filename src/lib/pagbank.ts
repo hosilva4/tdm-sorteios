@@ -12,7 +12,6 @@ import "server-only";
 import { db } from "@/lib/db";
 import { PRECO_ASSINATURA_CENTAVOS, PRECO_AVULSO_CENTAVOS } from "@/lib/precos";
 
-const CHAVE_PLANO = "pagbank_plano_mensal_id";
 const CHAVE_PUBLICA_CONFIG = "pagbank_chave_publica_producao";
 
 export function pagbankConfigurado(): boolean {
@@ -23,12 +22,6 @@ export function pagbankBaseUrl(): string {
   return process.env.PAGBANK_ENV === "production"
     ? "https://api.pagseguro.com"
     : "https://sandbox.api.pagseguro.com";
-}
-
-export function pagbankAssinaturasBaseUrl(): string {
-  return process.env.PAGBANK_ENV === "production"
-    ? "https://api.assinaturas.pagseguro.com"
-    : "https://sandbox.api.assinaturas.pagseguro.com";
 }
 
 /**
@@ -234,135 +227,148 @@ export function pedidoPago(ordem: RespostaOrder): boolean {
   return Boolean(ordem.charges?.some((c) => c.status === "PAID"));
 }
 
-// ---------- Assinaturas: plano mensal + subscription ----------
+// ---------- Assinatura mensal via Orders API com recorrência ----------
+// (developer.pagbank.com.br/reference/criar-pagar-pedido-com-recorrencia)
+// A primeira cobrança (INITIAL) envia o cartão criptografado com store=true
+// e recebe de volta um cartão armazenado (CARD_...); as renovações mensais
+// (SUBSEQUENT) cobram esse cartão pelo cron /api/cron/renovacoes.
 
-interface RespostaPlano {
-  id: string;
+export interface ResultadoCobrancaCartao {
+  pago: boolean;
+  orderId: string;
+  chargeId?: string;
+  cartaoId?: string;
+  bandeira?: string;
+  ultimos4?: string;
+  motivoRecusa?: string;
 }
 
-/**
- * Garante o plano mensal no PagBank (cria uma única vez e guarda o id na
- * tabela Config). Se o preço mudar em precos.ts, crie um plano novo apagando
- * a chave "pagbank_plano_mensal_id".
- */
-export async function garantirPlanoMensal(): Promise<string> {
-  const existente = await db.config.findUnique({ where: { chave: CHAVE_PLANO } });
-  if (existente) return existente.valor;
-
-  const plano = await chamar<RespostaPlano>(
-    pagbankAssinaturasBaseUrl(),
-    "/plans",
-    {
-      method: "POST",
-      idempotencia: "tdm-plano-mensal-v1",
-      body: JSON.stringify({
-        reference_id: "tdm-plano-mensal-v1",
-        name: "TDM Sorteios: plano mensal ilimitado",
-        description:
-          "Sorteios ilimitados de inauguração enquanto a assinatura estiver ativa.",
-        amount: { value: PRECO_ASSINATURA_CENTAVOS, currency: "BRL" },
-        interval: { unit: "MONTH", length: 1 },
-        payment_method: ["CREDIT_CARD"],
-      }),
-    }
-  );
-
-  await db.config.create({ data: { chave: CHAVE_PLANO, valor: plano.id } });
-  return plano.id;
-}
-
-export interface RespostaAssinatura {
+interface RespostaOrderCartao {
   id: string;
-  status?: string;
-  next_invoice_at?: string;
-  payment_method?: Array<{
-    type?: string;
-    card?: { brand?: string; last_digits?: string };
+  charges?: Array<{
+    id: string;
+    status: string;
+    payment_response?: { message?: string };
+    payment_method?: {
+      card?: { id?: string; brand?: string; last_digits?: string };
+    };
   }>;
 }
 
-/** Cria a assinatura mensal com cartão criptografado no navegador. */
-export async function criarAssinaturaPagbank(dados: {
-  usuarioId: string;
+function extrairResultadoCobranca(
+  ordem: RespostaOrderCartao
+): ResultadoCobrancaCartao {
+  const charge = ordem.charges?.[0];
+  return {
+    pago: charge?.status === "PAID",
+    orderId: ordem.id,
+    chargeId: charge?.id,
+    cartaoId: charge?.payment_method?.card?.id,
+    bandeira: charge?.payment_method?.card?.brand,
+    ultimos4: charge?.payment_method?.card?.last_digits,
+    motivoRecusa:
+      charge?.status === "PAID"
+        ? undefined
+        : charge?.payment_response?.message,
+  };
+}
+
+/**
+ * Primeira cobrança da assinatura: cobra o mês na hora e armazena o cartão
+ * no PagBank para as renovações. O CVV passa direto à API; nada é gravado.
+ */
+export async function cobrarAssinaturaInicial(dados: {
+  pagamentoId: string;
   nome: string;
   email: string;
   cpf: string;
-  telefone: { ddd: string; numero: string };
   cartaoCriptografado: string;
-  // Exigido pela API junto do cartão criptografado (card.security_code).
-  // Passa direto ao PagBank; nunca é gravado nem logado.
   cvv: string;
   titularCartao: string;
-}): Promise<RespostaAssinatura> {
-  const planoId = await garantirPlanoMensal();
-  const cartao = {
-    type: "CREDIT_CARD",
-    card: {
-      encrypted: dados.cartaoCriptografado,
-      security_code: dados.cvv,
-      holder: { name: dados.titularCartao },
-    },
-  };
-
-  return chamar<RespostaAssinatura>(
-    pagbankAssinaturasBaseUrl(),
-    "/subscriptions",
-    {
-      method: "POST",
-      // Chave única por tentativa: uma chave fixa faria o PagBank replayar
-      // a resposta (inclusive recusas) por até 48h nas tentativas seguintes.
-      idempotencia: `subs-${dados.usuarioId}-${crypto.randomUUID()}`,
-      body: JSON.stringify({
-        reference_id: dados.usuarioId,
-        plan: { id: planoId },
-        customer: {
-          reference_id: dados.usuarioId,
-          name: dados.nome,
-          email: dados.email,
-          tax_id: dados.cpf,
-          phones: [
-            {
-              country: "55",
-              area: dados.telefone.ddd,
-              number: dados.telefone.numero,
-            },
-          ],
-          billing_info: [cartao],
+}): Promise<ResultadoCobrancaCartao> {
+  const ordem = await chamar<RespostaOrderCartao>(pagbankBaseUrl(), "/orders", {
+    method: "POST",
+    idempotencia: dados.pagamentoId,
+    body: JSON.stringify({
+      reference_id: dados.pagamentoId,
+      customer: { name: dados.nome, email: dados.email, tax_id: dados.cpf },
+      items: [
+        {
+          name: "TDM Sorteios: assinatura mensal ilimitada",
+          quantity: 1,
+          unit_amount: PRECO_ASSINATURA_CENTAVOS,
         },
-        payment_method: [cartao],
-      }),
-    }
-  );
-}
-
-export async function consultarAssinatura(
-  subsId: string
-): Promise<RespostaAssinatura> {
-  return chamar<RespostaAssinatura>(
-    pagbankAssinaturasBaseUrl(),
-    `/subscriptions/${subsId}`,
-    { method: "GET" }
-  );
-}
-
-export async function cancelarAssinaturaPagbank(subsId: string): Promise<void> {
-  await chamar(pagbankAssinaturasBaseUrl(), `/subscriptions/${subsId}/cancel`, {
-    method: "PUT",
+      ],
+      charges: [
+        {
+          reference_id: dados.pagamentoId,
+          description: "Assinatura mensal TDM Sorteios",
+          amount: { value: PRECO_ASSINATURA_CENTAVOS, currency: "BRL" },
+          payment_method: {
+            type: "CREDIT_CARD",
+            installments: 1,
+            capture: true,
+            card: {
+              encrypted: dados.cartaoCriptografado,
+              security_code: dados.cvv,
+              holder: { name: dados.titularCartao },
+              // Dentro de card (validado no sandbox): devolve o cartão
+              // armazenado (CARD_...) na resposta para as renovações.
+              store: true,
+            },
+          },
+          recurring: { type: "INITIAL" },
+        },
+      ],
+      ...(urlsNotificacao().length > 0
+        ? { notification_urls: urlsNotificacao() }
+        : {}),
+    }),
   });
+
+  return extrairResultadoCobranca(ordem);
 }
 
-/** Converte o status do PagBank para o nosso (pendente/ativa/suspensa/cancelada). */
-export function statusAssinaturaLocal(statusPagbank?: string): string {
-  switch (statusPagbank) {
-    case "ACTIVE":
-      return "ativa";
-    case "SUSPENDED":
-    case "OVERDUE":
-      return "suspensa";
-    case "CANCELED":
-    case "EXPIRED":
-      return "cancelada";
-    default:
-      return "pendente";
-  }
+/** Renovação mensal: cobra o cartão armazenado (CARD_...) sem criptografia. */
+export async function cobrarAssinaturaRecorrente(dados: {
+  pagamentoId: string;
+  nome: string;
+  email: string;
+  cpf: string;
+  cartaoId: string;
+}): Promise<ResultadoCobrancaCartao> {
+  const ordem = await chamar<RespostaOrderCartao>(pagbankBaseUrl(), "/orders", {
+    method: "POST",
+    idempotencia: dados.pagamentoId,
+    body: JSON.stringify({
+      reference_id: dados.pagamentoId,
+      customer: { name: dados.nome, email: dados.email, tax_id: dados.cpf },
+      items: [
+        {
+          name: "TDM Sorteios: renovação da assinatura mensal",
+          quantity: 1,
+          unit_amount: PRECO_ASSINATURA_CENTAVOS,
+        },
+      ],
+      charges: [
+        {
+          reference_id: dados.pagamentoId,
+          description: "Renovação da assinatura mensal TDM Sorteios",
+          amount: { value: PRECO_ASSINATURA_CENTAVOS, currency: "BRL" },
+          payment_method: {
+            type: "CREDIT_CARD",
+            installments: 1,
+            capture: true,
+            card: { id: dados.cartaoId },
+          },
+          recurring: { type: "SUBSEQUENT" },
+        },
+      ],
+      ...(urlsNotificacao().length > 0
+        ? { notification_urls: urlsNotificacao() }
+        : {}),
+    }),
+  });
+
+  return extrairResultadoCobranca(ordem);
 }

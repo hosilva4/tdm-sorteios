@@ -6,12 +6,12 @@ import { db } from "@/lib/db";
 import { exigirUsuario } from "@/lib/usuario-atual";
 import {
   ErroPagbank,
-  criarAssinaturaPagbank,
+  cobrarAssinaturaInicial,
   criarPedidoPix,
   pagbankConfigurado,
-  statusAssinaturaLocal,
 } from "@/lib/pagbank";
 import { conciliarPedidoAvulso } from "@/lib/conciliacao";
+import { umMesDepois } from "@/lib/datas";
 import { soDigitos } from "@/dominio/telefone";
 import { PRECO_ASSINATURA_CENTAVOS, PRECO_AVULSO_CENTAVOS } from "@/lib/precos";
 
@@ -132,10 +132,6 @@ export interface EstadoAssinatura {
 const esquemaAssinatura = z.object({
   titular: z.string().trim().min(2, "Informe o nome impresso no cartão.").max(100),
   cpf: esquemaCpf,
-  celular: z
-    .string()
-    .transform(soDigitos)
-    .refine((d) => d.length === 10 || d.length === 11, "Informe o celular com DDD."),
   cartaoCriptografado: z
     .string()
     .min(10, "Não foi possível ler os dados do cartão. Confira e tente de novo."),
@@ -145,8 +141,9 @@ const esquemaAssinatura = z.object({
 });
 
 /**
- * Cria a assinatura mensal (renovação automática: o PagBank cobra o cartão
- * todo mês na data de aniversário; espelhamos a validade em proximaCobrancaEm).
+ * Assinatura mensal via Orders API com recorrência: cobra o primeiro mês na
+ * hora (INITIAL, com armazenamento do cartão) e as renovações mensais são
+ * feitas pelo cron /api/cron/renovacoes (SUBSEQUENT).
  */
 export async function assinarPlano(
   _anterior: EstadoAssinatura,
@@ -161,7 +158,6 @@ export async function assinarPlano(
   const dados = esquemaAssinatura.safeParse({
     titular: formData.get("titular") ?? "",
     cpf: String(formData.get("cpf") ?? ""),
-    celular: String(formData.get("celular") ?? ""),
     cartaoCriptografado: String(formData.get("cartaoCriptografado") ?? ""),
     cvv: String(formData.get("cvv") ?? ""),
     ultimos4: String(formData.get("ultimos4") ?? ""),
@@ -169,62 +165,78 @@ export async function assinarPlano(
   });
   if (!dados.success) return { erro: dados.error.issues[0].message };
 
-  const celular = dados.data.celular;
+  const pagamento = await db.pagamento.create({
+    data: {
+      usuarioId: usuario.id,
+      tipo: "assinatura",
+      valorCentavos: PRECO_ASSINATURA_CENTAVOS,
+      metodo: "cartao",
+    },
+  });
 
   try {
-    const remota = await criarAssinaturaPagbank({
-      usuarioId: usuario.id,
+    const cobranca = await cobrarAssinaturaInicial({
+      pagamentoId: pagamento.id,
       nome: usuario.nome,
       email: usuario.email,
       cpf: dados.data.cpf,
-      telefone: { ddd: celular.slice(0, 2), numero: celular.slice(2) },
       cartaoCriptografado: dados.data.cartaoCriptografado,
       cvv: dados.data.cvv,
       titularCartao: dados.data.titular,
     });
 
-    const cartaoRemoto = remota.payment_method?.find((m) => m.card)?.card;
-    await db.$transaction(async (tx) => {
-      await tx.assinatura.upsert({
-        where: { usuarioId: usuario.id },
-        create: {
-          usuarioId: usuario.id,
-          status: statusAssinaturaLocal(remota.status),
-          pagbankId: remota.id,
-          proximaCobrancaEm: remota.next_invoice_at
-            ? new Date(remota.next_invoice_at)
-            : null,
-          cartaoBandeira: cartaoRemoto?.brand ?? dados.data.bandeira ?? null,
-          cartaoUltimos4: cartaoRemoto?.last_digits ?? dados.data.ultimos4 ?? null,
-        },
-        update: {
-          status: statusAssinaturaLocal(remota.status),
-          pagbankId: remota.id,
-          proximaCobrancaEm: remota.next_invoice_at
-            ? new Date(remota.next_invoice_at)
-            : null,
-          cartaoBandeira: cartaoRemoto?.brand ?? dados.data.bandeira ?? null,
-          cartaoUltimos4: cartaoRemoto?.last_digits ?? dados.data.ultimos4 ?? null,
-        },
-      });
-      await tx.pagamento.create({
-        data: {
-          usuarioId: usuario.id,
-          tipo: "assinatura",
-          status:
-            statusAssinaturaLocal(remota.status) === "ativa"
-              ? "aprovado"
-              : "pendente",
-          valorCentavos: PRECO_ASSINATURA_CENTAVOS,
-          metodo: "cartao",
-        },
-      });
+    await db.pagamento.update({
+      where: { id: pagamento.id },
+      data: {
+        pagbankOrderId: cobranca.orderId,
+        pagbankChargeId: cobranca.chargeId,
+        status: cobranca.pago ? "aprovado" : "recusado",
+      },
     });
+
+    if (!cobranca.pago) {
+      return {
+        erro: cobranca.motivoRecusa
+          ? `O cartão foi recusado: ${cobranca.motivoRecusa}. Tente outro cartão.`
+          : "O cartão foi recusado. Confira os dados ou tente outro cartão.",
+      };
+    }
+
+    await db.assinatura.upsert({
+      where: { usuarioId: usuario.id },
+      create: {
+        usuarioId: usuario.id,
+        status: "ativa",
+        pagbankCartaoId: cobranca.cartaoId ?? null,
+        cpfTitular: dados.data.cpf,
+        proximaCobrancaEm: umMesDepois(new Date()),
+        cartaoBandeira: cobranca.bandeira ?? dados.data.bandeira ?? null,
+        cartaoUltimos4: cobranca.ultimos4 ?? dados.data.ultimos4 ?? null,
+      },
+      update: {
+        status: "ativa",
+        pagbankCartaoId: cobranca.cartaoId ?? null,
+        cpfTitular: dados.data.cpf,
+        proximaCobrancaEm: umMesDepois(new Date()),
+        cartaoBandeira: cobranca.bandeira ?? dados.data.bandeira ?? null,
+        cartaoUltimos4: cobranca.ultimos4 ?? dados.data.ultimos4 ?? null,
+      },
+    });
+    if (!cobranca.cartaoId) {
+      // Pagou mas o cartão não veio armazenado: a renovação automática não
+      // será possível; o cron suspenderá no vencimento.
+      console.error("assinarPlano: cobrança paga sem card.id armazenado", {
+        pagamentoId: pagamento.id,
+      });
+    }
 
     revalidatePath("/app", "layout");
     return { ok: true };
   } catch (e) {
     console.error("assinarPlano:", e);
+    await db.pagamento
+      .update({ where: { id: pagamento.id }, data: { status: "cancelado" } })
+      .catch(() => {});
     if (e instanceof ErroPagbank && e.status >= 400 && e.status < 500) {
       const detalhe = e.descricao();
       return {

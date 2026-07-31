@@ -72,7 +72,6 @@ export function FormAssinatura({
     const dados = new FormData();
     dados.set("titular", String(campos.get("titular") ?? ""));
     dados.set("cpf", String(campos.get("cpf") ?? ""));
-    dados.set("celular", String(campos.get("celular") ?? ""));
     dados.set("cartaoCriptografado", criptografia.encryptedCard);
     // A API de assinaturas exige o CVV junto do cartão criptografado
     // (card.security_code); ele não é armazenado em lugar nenhum.
@@ -159,19 +158,6 @@ export function FormAssinatura({
             name="cpf"
             inputMode="numeric"
             placeholder="000.000.000-00"
-            required
-          />
-        </div>
-        <div className="grupo-campo">
-          <label className="rotulo" htmlFor="celular">
-            Celular com DDD
-          </label>
-          <input
-            className="campo"
-            id="celular"
-            name="celular"
-            inputMode="tel"
-            placeholder="(41) 99876-5432"
             required
           />
         </div>

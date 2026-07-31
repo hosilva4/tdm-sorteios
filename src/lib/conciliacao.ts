@@ -5,12 +5,7 @@ import "server-only";
 // de mudar qualquer coisa no banco.
 
 import { db } from "@/lib/db";
-import {
-  consultarAssinatura,
-  consultarPedido,
-  pedidoPago,
-  statusAssinaturaLocal,
-} from "@/lib/pagbank";
+import { consultarPedido, pedidoPago } from "@/lib/pagbank";
 
 export type ResultadoConciliacao = "aprovado" | "pendente" | "nao-encontrado";
 
@@ -53,20 +48,3 @@ export async function conciliarPedidoAvulso(
   return "aprovado";
 }
 
-/** Reconsulta uma subscription e espelha status, validade e cartão no banco. */
-export async function sincronizarAssinatura(subsId: string): Promise<void> {
-  const remota = await consultarAssinatura(subsId);
-
-  const cartao = remota.payment_method?.find((m) => m.card)?.card;
-  await db.assinatura.updateMany({
-    where: { pagbankId: subsId },
-    data: {
-      status: statusAssinaturaLocal(remota.status),
-      proximaCobrancaEm: remota.next_invoice_at
-        ? new Date(remota.next_invoice_at)
-        : undefined,
-      cartaoBandeira: cartao?.brand ?? undefined,
-      cartaoUltimos4: cartao?.last_digits ?? undefined,
-    },
-  });
-}

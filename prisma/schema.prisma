@@ -33,7 +33,12 @@ model Assinatura {
   usuario            Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   // pendente | ativa | suspensa | cancelada
   status             String    @default("pendente")
-  pagbankId          String?   @unique // id da subscription no PagBank (SUBS_...)
+  pagbankId          String?   @unique // legado: id de subscription (SUBS_...)
+  // Cartão armazenado no PagBank (CARD_...), usado nas renovações mensais
+  // via Orders API com recurring SUBSEQUENT.
+  pagbankCartaoId    String?
+  // CPF do titular, exigido pelo PagBank em cada cobrança de renovação.
+  cpfTitular         String?
   // Data de validade do ciclo mensal: renovação automática (cobrança no cartão) nessa data.
   proximaCobrancaEm  DateTime?
   // Exibição da forma de pagamento da renovação (dados não sensíveis)

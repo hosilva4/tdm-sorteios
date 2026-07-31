@@ -53,6 +53,7 @@ pela marketplace da Vercel) ou Neon. Em dev local nada muda:
    | `PAGBANK_ENV` | `sandbox` até validar o fluxo; depois `production` |
    | `PAGBANK_TOKEN` | token da conta PagBank (sandbox e produção têm tokens distintos) |
    | `NEXT_PUBLIC_PAGBANK_PUBLIC_KEY` | só em sandbox: a chave pública padrão do ambiente. Em produção, deixe sem valor: o app gera/consulta a chave via API com o token e guarda na tabela `Config` |
+   | `CRON_SECRET` | segredo do cron de renovação das assinaturas (gere com `openssl rand -base64 32`); a Vercel envia automaticamente nas execuções agendadas |
 
 4. Clique em **Deploy**. Ao final, o site sobe em
    `https://sorteio4u.vercel.app` (URL provisória).
@@ -85,11 +86,15 @@ pela marketplace da Vercel) ou Neon. Em dev local nada muda:
 3. Troque para `PAGBANK_ENV=production` com o token e a chave pública de
    produção e refaça um teste real de ponta a ponta.
 
-Detalhes da integração (endpoints, conciliação, plano mensal): ver o
-código em `src/lib/pagbank.ts` e `src/lib/conciliacao.ts`. Se
-`PRECO_ASSINATURA_CENTAVOS` mudar, apague a linha
-`pagbank_plano_mensal_id` da tabela `Config` para o app criar um plano
-novo.
+**Como a assinatura funciona** (Orders API com recorrência, ver
+`src/lib/pagbank.ts`): ao assinar, o app cobra o primeiro mês na hora
+(`recurring: INITIAL`, cartão criptografado no navegador) e o PagBank
+devolve um cartão armazenado (`CARD_...`). As renovações mensais são
+disparadas pelo cron da Vercel (`vercel.json` → `/api/cron/renovacoes`,
+diário ao meio-dia UTC), que cobra o cartão armazenado
+(`recurring: SUBSEQUENT`) nas assinaturas vencidas; recusa suspende a
+assinatura e o franqueado reativa com um novo cartão. O cron exige a env
+`CRON_SECRET`. O webhook cobre a confirmação dos pedidos (PIX e cartão).
 
 ## 5. Fluxo de trabalho no GitHub
 

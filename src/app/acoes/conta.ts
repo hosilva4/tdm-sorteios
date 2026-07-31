@@ -5,10 +5,6 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { exigirUsuario } from "@/lib/usuario-atual";
-import {
-  cancelarAssinaturaPagbank,
-  pagbankConfigurado,
-} from "@/lib/pagbank";
 
 export interface EstadoConta {
   ok?: boolean;
@@ -94,19 +90,9 @@ export async function cancelarAssinatura(): Promise<EstadoConta> {
     return { erro: "Você não tem uma assinatura para cancelar." };
   }
 
-  // Cancela primeiro no PagBank; se a API falhar, não marcamos localmente
-  // (senão o cartão continuaria sendo cobrado todo mês).
-  if (assinatura.pagbankId && pagbankConfigurado()) {
-    try {
-      await cancelarAssinaturaPagbank(assinatura.pagbankId);
-    } catch (e) {
-      console.error("cancelarAssinatura:", e);
-      return {
-        erro: "Não foi possível cancelar no PagBank agora. Tente novamente em instantes.",
-      };
-    }
-  }
-
+  // A renovação é cobrada pelo nosso cron (Orders API recorrente): marcar
+  // como cancelada já interrompe as próximas cobranças, pois o cron só
+  // renova assinaturas com status "ativa".
   await db.assinatura.update({
     where: { id: assinatura.id },
     data: { status: "cancelada" },
