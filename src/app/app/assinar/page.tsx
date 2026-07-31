@@ -1,49 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { exigirUsuario } from "@/lib/usuario-atual";
-import { obterChavePublicaCartao, pagbankConfigurado } from "@/lib/pagbank";
-import { PRECO_ASSINATURA_CENTAVOS, formatarReais } from "@/lib/precos";
-import { FormAssinatura } from "./FormAssinatura";
 
-export default async function PaginaAssinar() {
-  const usuario = await exigirUsuario();
-  if (usuario.assinaturaAtiva) redirect("/app/perfil");
-
-  // Sandbox: chave padrão via env. Produção: gerada/consultada na API e
-  // guardada na tabela Config (não precisa configurar variável).
-  const chavePublica = await obterChavePublicaCartao();
-  const pronto = pagbankConfigurado() && chavePublica;
-
-  return (
-    <div className="espaco-vertical" style={{ paddingBottom: "3rem" }}>
-      <div className="cabecalho-pagina">
-        <div>
-          <p className="texto-pequeno" style={{ margin: 0 }}>
-            <Link href="/app/comprar">← Créditos e assinatura</Link>
-          </p>
-          <h1 style={{ marginBottom: 0 }}>Assinar plano mensal</h1>
-        </div>
-      </div>
-
-      <div className="cartao" style={{ maxWidth: 480 }}>
-        <p style={{ marginTop: 0 }}>
-          <strong>{formatarReais(PRECO_ASSINATURA_CENTAVOS)}/mês</strong>,
-          sorteios ilimitados. Renovação automática todo mês no cartão, com
-          cancelamento a qualquer momento.
-        </p>
-        {pronto ? (
-          <FormAssinatura
-            chavePublica={chavePublica}
-            precoMensal={formatarReais(PRECO_ASSINATURA_CENTAVOS)}
-          />
-        ) : (
-          <div className="aviso-info">
-            A assinatura ainda não está disponível neste ambiente: configure o
-            PAGBANK_TOKEN (e, em sandbox, a chave pública padrão em
-            NEXT_PUBLIC_PAGBANK_PUBLIC_KEY). Ver docs/DEPLOY.md, seção 4.
-          </div>
-        )}
-      </div>
-    </div>
-  );
+/** Rota antiga: o checkout agora é unificado em /app/pagamento. */
+export default function PaginaAssinar() {
+  redirect("/app/pagamento/assinatura");
 }

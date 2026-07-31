@@ -7,6 +7,7 @@ import { exigirUsuario } from "@/lib/usuario-atual";
 import {
   ErroPagbank,
   cobrarAssinaturaInicial,
+  cobrarAvulsoCartao,
   criarPedidoPix,
   pagbankConfigurado,
 } from "@/lib/pagbank";
@@ -119,6 +120,97 @@ export async function verificarPagamentoAvulso(
   } catch (e) {
     console.error("verificarPagamentoAvulso:", e);
     return { erro: "Não foi possível consultar o pagamento. Tente de novo." };
+  }
+}
+
+// ---------- compra avulsa no cartão ----------
+
+export interface EstadoCompraCartao {
+  ok?: boolean;
+  erro?: string;
+}
+
+const esquemaCartaoAvulso = z.object({
+  titular: z.string().trim().min(2, "Informe o nome impresso no cartão.").max(100),
+  cpf: esquemaCpf,
+  cartaoCriptografado: z
+    .string()
+    .min(10, "Não foi possível ler os dados do cartão. Confira e tente de novo."),
+  cvv: z.string().regex(/^\d{3,4}$/, "CVV inválido."),
+});
+
+/** Compra 1 crédito no cartão, com aprovação na hora. */
+export async function comprarAvulsoCartao(
+  _anterior: EstadoCompraCartao,
+  formData: FormData
+): Promise<EstadoCompraCartao> {
+  const usuario = await exigirUsuario();
+  if (!pagbankConfigurado()) return { erro: MSG_NAO_CONFIGURADO };
+
+  const dados = esquemaCartaoAvulso.safeParse({
+    titular: formData.get("titular") ?? "",
+    cpf: String(formData.get("cpf") ?? ""),
+    cartaoCriptografado: String(formData.get("cartaoCriptografado") ?? ""),
+    cvv: String(formData.get("cvv") ?? ""),
+  });
+  if (!dados.success) return { erro: dados.error.issues[0].message };
+
+  const pagamento = await db.pagamento.create({
+    data: {
+      usuarioId: usuario.id,
+      tipo: "avulso",
+      valorCentavos: PRECO_AVULSO_CENTAVOS,
+      metodo: "cartao",
+    },
+  });
+
+  try {
+    const cobranca = await cobrarAvulsoCartao({
+      pagamentoId: pagamento.id,
+      nome: usuario.nome,
+      email: usuario.email,
+      cpf: dados.data.cpf,
+      cartaoCriptografado: dados.data.cartaoCriptografado,
+      cvv: dados.data.cvv,
+      titularCartao: dados.data.titular,
+    });
+
+    await db.pagamento.update({
+      where: { id: pagamento.id },
+      data: {
+        pagbankOrderId: cobranca.orderId,
+        pagbankChargeId: cobranca.chargeId,
+        ...(cobranca.pago ? {} : { status: "recusado" }),
+      },
+    });
+
+    if (!cobranca.pago) {
+      return {
+        erro: cobranca.motivoRecusa
+          ? `O cartão foi recusado: ${cobranca.motivoRecusa}. Tente outro cartão ou pague com PIX.`
+          : "O cartão foi recusado. Confira os dados ou pague com PIX.",
+      };
+    }
+
+    // A conciliação reconsulta o pedido e credita de forma idempotente
+    // (o webhook, se chegar depois, não credita de novo).
+    await conciliarPedidoAvulso(cobranca.orderId);
+    revalidatePath("/app", "layout");
+    return { ok: true };
+  } catch (e) {
+    console.error("comprarAvulsoCartao:", e);
+    await db.pagamento
+      .update({ where: { id: pagamento.id }, data: { status: "cancelado" } })
+      .catch(() => {});
+    if (e instanceof ErroPagbank && e.status >= 400 && e.status < 500) {
+      const detalhe = e.descricao();
+      return {
+        erro: detalhe
+          ? `O PagBank recusou o pagamento: ${detalhe}`
+          : "O PagBank recusou os dados do cartão. Confira e tente novamente.",
+      };
+    }
+    return { erro: "Não foi possível cobrar o cartão agora. Tente de novo em instantes." };
   }
 }
 

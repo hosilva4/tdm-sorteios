@@ -3,7 +3,6 @@
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { assinarPlano, type EstadoAssinatura } from "@/app/acoes/pagamentos";
 
 declare global {
   interface Window {
@@ -27,17 +26,35 @@ function bandeiraDoNumero(numero: string): string {
   return "";
 }
 
-export function FormAssinatura({
-  chavePublica,
-  precoMensal,
-}: {
+interface Props {
   chavePublica: string;
-  precoMensal: string;
-}) {
+  textoBotao: string;
+  /** Server action que recebe o FormData com os dados criptografados. */
+  acao: (
+    anterior: { ok?: boolean; erro?: string },
+    formData: FormData
+  ) => Promise<{ ok?: boolean; erro?: string }>;
+  /** Para onde ir após o sucesso; sem valor, mostra mensagem e atualiza. */
+  urlSucesso?: string;
+  mensagemSucesso?: string;
+}
+
+/**
+ * Formulário de cartão compartilhado (compra avulsa e assinatura): coleta os
+ * dados, criptografa no navegador com o SDK do PagBank e envia à action.
+ */
+export function FormCartao({
+  chavePublica,
+  textoBotao,
+  acao,
+  urlSucesso,
+  mensagemSucesso,
+}: Props) {
   const router = useRouter();
   const [, iniciarTransicao] = useTransition();
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [sucesso, setSucesso] = useState(false);
   const [sdkPronto, setSdkPronto] = useState(false);
 
   async function aoEnviar(e: React.FormEvent<HTMLFormElement>) {
@@ -73,21 +90,33 @@ export function FormAssinatura({
     dados.set("titular", String(campos.get("titular") ?? ""));
     dados.set("cpf", String(campos.get("cpf") ?? ""));
     dados.set("cartaoCriptografado", criptografia.encryptedCard);
-    // A API de assinaturas exige o CVV junto do cartão criptografado
-    // (card.security_code); ele não é armazenado em lugar nenhum.
+    // O CVV vai junto (a API exige card.security_code); não é armazenado.
     dados.set("cvv", String(campos.get("cvv") ?? ""));
     dados.set("ultimos4", numero.slice(-4));
     dados.set("bandeira", bandeiraDoNumero(numero));
 
     setEnviando(true);
-    const resultado: EstadoAssinatura = await assinarPlano({}, dados);
+    const resultado = await acao({}, dados);
     setEnviando(false);
 
     if (resultado.ok) {
-      iniciarTransicao(() => router.push("/app/perfil"));
+      if (urlSucesso) {
+        iniciarTransicao(() => router.push(urlSucesso));
+      } else {
+        setSucesso(true);
+        iniciarTransicao(() => router.refresh());
+      }
     } else {
-      setErro(resultado.erro ?? "Não foi possível assinar.");
+      setErro(resultado.erro ?? "Não foi possível concluir o pagamento.");
     }
+  }
+
+  if (sucesso) {
+    return (
+      <div className="aviso-info" style={{ background: "var(--sucesso-suave)", borderColor: "#bbf7d0" }}>
+        {mensagemSucesso ?? "Pagamento aprovado!"}
+      </div>
+    );
   }
 
   return (
@@ -167,17 +196,15 @@ export function FormAssinatura({
           disabled={enviando || !sdkPronto}
         >
           {enviando
-            ? "Criando assinatura…"
+            ? "Processando pagamento…"
             : sdkPronto
-              ? `Assinar por ${precoMensal}/mês`
+              ? textoBotao
               : "Carregando pagamento…"}
         </button>
       </form>
       <p className="texto-suave texto-pequeno" style={{ marginBottom: 0 }}>
         Os dados do cartão são criptografados no seu navegador e enviados
-        direto ao PagBank; nossos servidores não guardam o número. A assinatura
-        renova todo mês automaticamente e pode ser cancelada a qualquer momento
-        na página Minha conta.
+        direto ao PagBank; nossos servidores não guardam o número.
       </p>
     </>
   );

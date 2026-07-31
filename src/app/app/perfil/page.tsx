@@ -87,7 +87,7 @@ export default async function PaginaPerfil() {
               cobrança no cartão não foi aprovada. Regularize para voltar a ter
               sorteios ilimitados.
             </p>
-            <Link href="/app/assinar" className="botao">
+            <Link href="/app/pagamento/assinatura" className="botao">
               Atualizar cartão e reativar
             </Link>
           </>
@@ -109,7 +109,7 @@ export default async function PaginaPerfil() {
                   </>
                 )}
             </p>
-            <Link href="/app/assinar" className="botao">
+            <Link href="/app/pagamento/assinatura" className="botao">
               Assinar novamente
             </Link>
           </>
@@ -120,7 +120,7 @@ export default async function PaginaPerfil() {
               {formatarReais(PRECO_ASSINATURA_CENTAVOS)} dá sorteios ilimitados
               e renova automaticamente no cartão todo mês.
             </p>
-            <Link href="/app/assinar" className="botao">
+            <Link href="/app/pagamento/assinatura" className="botao">
               Assinar plano mensal
             </Link>
           </>

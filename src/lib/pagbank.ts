@@ -329,6 +329,58 @@ export async function cobrarAssinaturaInicial(dados: {
   return extrairResultadoCobranca(ordem);
 }
 
+/**
+ * Compra avulsa de 1 crédito no cartão (pedido simples, sem recorrência):
+ * developer.pagbank.com.br/reference/criar-pagar-pedido-com-cartao
+ */
+export async function cobrarAvulsoCartao(dados: {
+  pagamentoId: string;
+  nome: string;
+  email: string;
+  cpf: string;
+  cartaoCriptografado: string;
+  cvv: string;
+  titularCartao: string;
+}): Promise<ResultadoCobrancaCartao> {
+  const ordem = await chamar<RespostaOrderCartao>(pagbankBaseUrl(), "/orders", {
+    method: "POST",
+    idempotencia: dados.pagamentoId,
+    body: JSON.stringify({
+      reference_id: dados.pagamentoId,
+      customer: { name: dados.nome, email: dados.email, tax_id: dados.cpf },
+      items: [
+        {
+          name: "TDM Sorteios: 1 sorteio de inauguração",
+          quantity: 1,
+          unit_amount: PRECO_AVULSO_CENTAVOS,
+        },
+      ],
+      charges: [
+        {
+          reference_id: dados.pagamentoId,
+          description: "1 sorteio de inauguração TDM Sorteios",
+          amount: { value: PRECO_AVULSO_CENTAVOS, currency: "BRL" },
+          payment_method: {
+            type: "CREDIT_CARD",
+            installments: 1,
+            capture: true,
+            card: {
+              encrypted: dados.cartaoCriptografado,
+              security_code: dados.cvv,
+              holder: { name: dados.titularCartao },
+            },
+          },
+        },
+      ],
+      ...(urlsNotificacao().length > 0
+        ? { notification_urls: urlsNotificacao() }
+        : {}),
+    }),
+  });
+
+  return extrairResultadoCobranca(ordem);
+}
+
 /** Renovação mensal: cobra o cartão armazenado (CARD_...) sem criptografia. */
 export async function cobrarAssinaturaRecorrente(dados: {
   pagamentoId: string;

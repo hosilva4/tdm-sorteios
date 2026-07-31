@@ -6,7 +6,6 @@ import {
   PRECO_AVULSO_CENTAVOS,
   formatarReais,
 } from "@/lib/precos";
-import { CompraPix } from "./CompraPix";
 
 export default async function PaginaComprar() {
   const usuario = await exigirUsuario();
@@ -59,9 +58,12 @@ export default async function PaginaComprar() {
             <small> / sorteio</small>
           </div>
           <p className="texto-suave">
-            1 crédito para usar na próxima inauguração, pago na hora com PIX.
+            1 crédito para usar na próxima inauguração, pago na hora com PIX
+            ou cartão de crédito.
           </p>
-          <CompraPix configurado={configurado} />
+          <Link href="/app/pagamento/avulso" className="botao">
+            Comprar 1 sorteio
+          </Link>
         </div>
 
         {!usuario.assinaturaAtiva && (
@@ -79,7 +81,7 @@ export default async function PaginaComprar() {
               cartão de crédito, com renovação automática mensal. Cancele
               quando quiser.
             </p>
-            <Link href="/app/assinar" className="botao">
+            <Link href="/app/pagamento/assinatura" className="botao">
               Assinar plano ilimitado
             </Link>
           </div>
