@@ -226,8 +226,11 @@ export async function assinarPlano(
   } catch (e) {
     console.error("assinarPlano:", e);
     if (e instanceof ErroPagbank && e.status >= 400 && e.status < 500) {
+      const detalhe = e.descricao();
       return {
-        erro: "O PagBank recusou os dados do cartão. Confira as informações e tente novamente.",
+        erro: detalhe
+          ? `O PagBank recusou a assinatura: ${detalhe}`
+          : "O PagBank recusou os dados do cartão. Confira as informações e tente novamente.",
       };
     }
     return { erro: "Não foi possível criar a assinatura agora. Tente de novo em instantes." };

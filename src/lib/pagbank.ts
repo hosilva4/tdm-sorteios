@@ -50,6 +50,18 @@ export class ErroPagbank extends Error {
   ) {
     super(message);
   }
+
+  /** Descrição legível do primeiro erro retornado pela API, se houver. */
+  descricao(): string {
+    const corpo = this.corpo as
+      | { error_messages?: Array<{ description?: string; parameter_name?: string }> }
+      | null;
+    const erro = corpo?.error_messages?.[0];
+    if (!erro?.description) return "";
+    return erro.parameter_name
+      ? `${erro.description} (${erro.parameter_name})`
+      : erro.description;
+  }
 }
 
 async function chamar<T>(
@@ -297,7 +309,9 @@ export async function criarAssinaturaPagbank(dados: {
     "/subscriptions",
     {
       method: "POST",
-      idempotencia: `subs-${dados.usuarioId}-${planoId}`,
+      // Chave única por tentativa: uma chave fixa faria o PagBank replayar
+      // a resposta (inclusive recusas) por até 48h nas tentativas seguintes.
+      idempotencia: `subs-${dados.usuarioId}-${crypto.randomUUID()}`,
       body: JSON.stringify({
         reference_id: dados.usuarioId,
         plan: { id: planoId },
