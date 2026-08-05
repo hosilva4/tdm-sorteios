@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --fundo: #f6f8f6;
   --superficie: #ffffff;
@@ -16,6 +20,30 @@
   --aviso-borda: #fde68a;
   --raio: 10px;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Tokens shadcn (HSL sem hsl()), espelhando a paleta acima. */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 120 5% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 120 5% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 120 5% 11%;
+  --primary: 146 88% 34%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 120 12% 97%;
+  --secondary-foreground: 120 5% 11%;
+  --muted: 120 12% 97%;
+  --muted-foreground: 144 5% 42%;
+  --accent: 143 53% 94%;
+  --accent-foreground: 146 92% 28%;
+  --destructive: 0 74% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 120 7% 89%;
+  --input: 120 7% 89%;
+  --ring: 146 88% 34%;
+  --radius: 0.625rem;
 }
 
 * {

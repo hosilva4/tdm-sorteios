@@ -6,7 +6,7 @@ import {
   cadastrarNoEvento,
   type EstadoCadastroEvento,
 } from "@/app/acoes/sorteios";
-import { CamposParticipante } from "@/componentes/CamposParticipante";
+import { CamposParticipante } from "@/components/CamposParticipante";
 
 const SEGUNDOS_TELA_SUCESSO = 5;
 

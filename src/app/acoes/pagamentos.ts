@@ -13,7 +13,7 @@ import {
 } from "@/lib/pagbank";
 import { conciliarPedidoAvulso } from "@/lib/conciliacao";
 import { umMesDepois } from "@/lib/datas";
-import { soDigitos } from "@/dominio/telefone";
+import { soDigitos } from "@/domain/telefone";
 import { PRECO_ASSINATURA_CENTAVOS, PRECO_AVULSO_CENTAVOS } from "@/lib/precos";
 
 const MSG_NAO_CONFIGURADO =

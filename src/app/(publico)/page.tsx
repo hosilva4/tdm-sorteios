@@ -1,61 +1,87 @@
-import Link from "next/link";
+import {
+  ChatBubbleIcon,
+  DesktopIcon,
+  MagicWandIcon,
+  MobileIcon,
+  RocketIcon,
+} from "@radix-ui/react-icons";
 import { usuarioDaSessao } from "@/lib/sessao";
+import HeroAurora from "@/components/HeroAurora";
+import { BentoCard, BentoGrid } from "@/components/ui/bento-grid";
 import {
   PRECO_ASSINATURA_CENTAVOS,
   PRECO_AVULSO_CENTAVOS,
   formatarReais,
 } from "@/lib/precos";
 
+const recursos = [
+  {
+    Icon: MobileIcon,
+    name: "Modo tablet no evento",
+    description:
+      "Deixe o tablet na bancada: cada visitante se cadastra sozinho com nome, WhatsApp e apartamento. Sem papelzinho, sem fila, sem digitação depois.",
+    href: "/cadastro",
+    cta: "Preparar meu sorteio",
+    background: null,
+    className: "lg:col-start-2 lg:col-end-3 lg:row-start-1 lg:row-end-4",
+  },
+  {
+    Icon: MagicWandIcon,
+    name: "Sorteie na frente de todos",
+    description:
+      "Encerrou os cadastros? Sorteie os prêmios ali mesmo, com aleatoriedade criptográfica e sem repetir ganhador.",
+    href: "/cadastro",
+    cta: "Criar minha conta",
+    background: null,
+    className: "lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3",
+  },
+  {
+    Icon: RocketIcon,
+    name: "Pronto em um minuto",
+    description:
+      "Dê um nome, como “Inauguração Condomínio Solar”, abra o modo tablet e os cadastros já estão valendo.",
+    href: "/cadastro",
+    cta: "Começar agora",
+    background: null,
+    className: "lg:col-start-1 lg:col-end-2 lg:row-start-3 lg:row-end-4",
+  },
+  {
+    Icon: DesktopIcon,
+    name: "Telão ao vivo",
+    description:
+      "Projete o resultado em qualquer TV do salão: cada ganhador aparece na tela na hora do sorteio.",
+    href: "#precos",
+    cta: "Ver preços",
+    background: null,
+    className: "lg:col-start-3 lg:col-end-3 lg:row-start-1 lg:row-end-2",
+  },
+  {
+    Icon: ChatBubbleIcon,
+    name: "Ganhadores no WhatsApp",
+    description:
+      "Cada cadastro traz WhatsApp e apartamento: avise quem ganhou na hora, mesmo que a pessoa já tenha ido embora do evento.",
+    href: "#precos",
+    cta: "Ver preços",
+    background: null,
+    className: "lg:col-start-3 lg:col-end-3 lg:row-start-2 lg:row-end-4",
+  },
+];
+
 export default async function PaginaInicial() {
   const logado = Boolean(await usuarioDaSessao());
 
   return (
     <>
-      <main className="container">
-        <section className="hero">
-          <h1>
-            O sorteio da inauguração
-            <br />
-            do seu mercado autônomo
-          </h1>
-          <p>
-            Feito para franqueados market4u: deixe um tablet no evento, os
-            visitantes se cadastram sozinhos e você sorteia os prêmios na
-            hora, com transparência total para o condomínio.
-          </p>
-          <Link
-            href={logado ? "/app" : "/cadastro"}
-            className="botao botao-grande"
-          >
-            Preparar meu sorteio
-          </Link>
-        </section>
+      <HeroAurora logado={logado} />
 
+      <main className="container">
         <section>
           <h2 style={{ textAlign: "center" }}>Como funciona no dia do evento</h2>
-          <div className="grade-passos">
-            <div className="cartao">
-              <h3>1. Crie o sorteio</h3>
-              <p className="texto-suave">
-                Dê um nome, como &ldquo;Inauguração Condomínio Solar&rdquo;,
-                e abra o modo tablet. Leva menos de um minuto.
-              </p>
-            </div>
-            <div className="cartao">
-              <h3>2. Visitantes se cadastram</h3>
-              <p className="texto-suave">
-                O tablet fica na bancada: cada morador informa nome, WhatsApp e
-                apartamento. Sem papelzinho, sem fila, sem digitação depois.
-              </p>
-            </div>
-            <div className="cartao">
-              <h3>3. Sorteie na frente de todos</h3>
-              <p className="texto-suave">
-                Encerrou os cadastros? Sorteie os prêmios ali mesmo, com
-                aleatoriedade criptográfica e sem repetir ganhador.
-              </p>
-            </div>
-          </div>
+          <BentoGrid className="my-8 auto-rows-[11rem]">
+            {recursos.map((recurso) => (
+              <BentoCard key={recurso.name} {...recurso} />
+            ))}
+          </BentoGrid>
         </section>
 
         <section id="precos">

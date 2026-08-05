@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { exigirUsuario } from "@/lib/usuario-atual";
-import { metaGanhadores, nomePremio, premioDaPosicao } from "@/dominio/premios";
-import { mascararTelefone } from "@/dominio/telefone";
+import { metaGanhadores, nomePremio, premioDaPosicao } from "@/domain/premios";
+import { mascararTelefone } from "@/domain/telefone";
 import { rotuloChancePorGrupo, rotuloGrupoCurto } from "@/lib/predio";
 import { BotoesResumo } from "./BotoesResumo";
 

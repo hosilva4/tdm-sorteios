@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { formatarTelefone, soDigitos } from "@/dominio/telefone";
+import { formatarTelefone, soDigitos } from "@/domain/telefone";
 
 const MAX_PARTICIPANTES = 10_000;
 

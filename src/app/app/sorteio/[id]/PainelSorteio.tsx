@@ -13,14 +13,14 @@ import {
   removerParticipante,
   sortearProximoGanhador,
 } from "@/app/acoes/sorteios";
-import { elegiveis, type ParticipanteSorteavel } from "@/dominio/sorteio";
-import { mascararTelefone, soDigitos } from "@/dominio/telefone";
+import { elegiveis, type ParticipanteSorteavel } from "@/domain/sorteio";
+import { mascararTelefone, soDigitos } from "@/domain/telefone";
 import {
   metaGanhadores,
   nomePremio,
   premioDaPosicao,
   type PremioResumo,
-} from "@/dominio/premios";
+} from "@/domain/premios";
 import {
   ehComercial,
   rotuloChancePorGrupo,

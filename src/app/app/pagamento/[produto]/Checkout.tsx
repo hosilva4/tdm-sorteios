@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { assinarPlano, comprarAvulsoCartao } from "@/app/acoes/pagamentos";
-import { FormCartao } from "@/componentes/FormCartao";
-import { CompraPix } from "@/componentes/CompraPix";
+import { FormCartao } from "@/components/FormCartao";
+import { CompraPix } from "@/components/CompraPix";
 
 interface Props {
   produto: "avulso" | "assinatura";

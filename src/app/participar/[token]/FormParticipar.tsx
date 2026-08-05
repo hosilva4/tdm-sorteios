@@ -5,7 +5,7 @@ import {
   cadastrarPorToken,
   type EstadoCadastroEvento,
 } from "@/app/acoes/sorteios";
-import { CamposParticipante } from "@/componentes/CamposParticipante";
+import { CamposParticipante } from "@/components/CamposParticipante";
 
 interface Props {
   token: string;

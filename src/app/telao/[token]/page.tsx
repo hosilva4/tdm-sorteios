@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
-import { premioDaPosicao, nomePremio, metaGanhadores } from "@/dominio/premios";
+import { premioDaPosicao, nomePremio, metaGanhadores } from "@/domain/premios";
 import { AtualizadorTelao } from "./AtualizadorTelao";
 import { RedeDePontos } from "./RedeDePontos";
 

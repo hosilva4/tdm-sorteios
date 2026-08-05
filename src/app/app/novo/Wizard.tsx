@@ -6,7 +6,7 @@ import {
   metaGanhadores,
   nomePremio,
   type PremioResumo,
-} from "@/dominio/premios";
+} from "@/domain/premios";
 import { rotuloChancePorGrupo, rotuloGrupo } from "@/lib/predio";
 
 interface PremioForm {

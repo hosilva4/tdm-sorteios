@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { exigirUsuario } from "@/lib/usuario-atual";
-import { elegiveis, sortearGanhador } from "@/dominio/sorteio";
-import { metaGanhadores } from "@/dominio/premios";
+import { elegiveis, sortearGanhador } from "@/domain/sorteio";
+import { metaGanhadores } from "@/domain/premios";
 import {
   registrarParticipante,
   type ResultadoCadastroEvento,
