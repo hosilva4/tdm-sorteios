@@ -329,6 +329,78 @@ export async function cobrarAssinaturaInicial(dados: {
   return extrairResultadoCobranca(ordem);
 }
 
+/** Valor simbólico usado só para validar um cartão novo; é estornado na hora. */
+export const VALOR_VALIDACAO_CARTAO_CENTAVOS = 100;
+
+/**
+ * Valida um cartão novo para a assinatura SEM cobrar mensalidade: faz uma
+ * cobrança mínima (INITIAL + store) apenas para autorizar e armazenar o
+ * cartão (CARD_...); o chamador estorna em seguida com estornarCobranca().
+ */
+export async function validarCartaoAssinatura(dados: {
+  pagamentoId: string;
+  nome: string;
+  email: string;
+  cpf: string;
+  cartaoCriptografado: string;
+  cvv: string;
+  titularCartao: string;
+}): Promise<ResultadoCobrancaCartao> {
+  const ordem = await chamar<RespostaOrderCartao>(pagbankBaseUrl(), "/orders", {
+    method: "POST",
+    idempotencia: dados.pagamentoId,
+    body: JSON.stringify({
+      reference_id: dados.pagamentoId,
+      customer: { name: dados.nome, email: dados.email, tax_id: dados.cpf },
+      items: [
+        {
+          name: "TDM Sorteios: validação do cartão da assinatura (estornada)",
+          quantity: 1,
+          unit_amount: VALOR_VALIDACAO_CARTAO_CENTAVOS,
+        },
+      ],
+      charges: [
+        {
+          reference_id: dados.pagamentoId,
+          description: "Validação do cartão da assinatura (estornada)",
+          amount: {
+            value: VALOR_VALIDACAO_CARTAO_CENTAVOS,
+            currency: "BRL",
+          },
+          payment_method: {
+            type: "CREDIT_CARD",
+            installments: 1,
+            capture: true,
+            card: {
+              encrypted: dados.cartaoCriptografado,
+              security_code: dados.cvv,
+              holder: { name: dados.titularCartao },
+              store: true,
+            },
+          },
+          recurring: { type: "INITIAL" },
+        },
+      ],
+    }),
+  });
+
+  return extrairResultadoCobranca(ordem);
+}
+
+/**
+ * Estorno total de uma cobrança paga
+ * (developer.pagbank.com.br/reference/estornar-cobranca).
+ */
+export async function estornarCobranca(
+  chargeId: string,
+  valorCentavos: number
+): Promise<void> {
+  await chamar(pagbankBaseUrl(), `/charges/${chargeId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ amount: { value: valorCentavos } }),
+  });
+}
+
 /**
  * Compra avulsa de 1 crédito no cartão (pedido simples, sem recorrência):
  * developer.pagbank.com.br/reference/criar-pagar-pedido-com-cartao

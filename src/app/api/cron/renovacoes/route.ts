@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   ErroPagbank,
   cobrarAssinaturaRecorrente,
+  estornarCobranca,
   pagbankConfigurado,
 } from "@/lib/pagbank";
 import { umMesDepois } from "@/lib/datas";
@@ -114,10 +115,37 @@ export async function GET(req: Request) {
     }
   }
 
+  // Estornos pendentes de validação de cartão: o estorno logo após a
+  // cobrança pode falhar (refund_temporarily_unavailable); reprocessa aqui
+  // até concluir, garantindo que a validação de R$ 1,00 nunca fica cobrada.
+  const validacoesPendentes = await db.pagamento.findMany({
+    where: {
+      tipo: "validacao",
+      status: "aprovado",
+      pagbankChargeId: { not: null },
+    },
+    take: 50,
+  });
+
+  let estornadas = 0;
+  for (const pendente of validacoesPendentes) {
+    try {
+      await estornarCobranca(pendente.pagbankChargeId!, pendente.valorCentavos);
+      await db.pagamento.update({
+        where: { id: pendente.id },
+        data: { status: "estornado" },
+      });
+      estornadas++;
+    } catch (e) {
+      console.error("cron renovacoes: estorno de validação:", pendente.id, e);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     vencidas: vencidas.length,
     renovadas,
     suspensas,
+    estornadas,
   });
 }

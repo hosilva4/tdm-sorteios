@@ -6,10 +6,13 @@ import { db } from "@/lib/db";
 import { exigirUsuario } from "@/lib/usuario-atual";
 import {
   ErroPagbank,
+  VALOR_VALIDACAO_CARTAO_CENTAVOS,
   cobrarAssinaturaInicial,
   cobrarAvulsoCartao,
   criarPedidoPix,
+  estornarCobranca,
   pagbankConfigurado,
+  validarCartaoAssinatura,
 } from "@/lib/pagbank";
 import { conciliarPedidoAvulso } from "@/lib/conciliacao";
 import { umMesDepois } from "@/lib/datas";
@@ -338,5 +341,146 @@ export async function assinarPlano(
       };
     }
     return { erro: "Não foi possível criar a assinatura agora. Tente de novo em instantes." };
+  }
+}
+
+/**
+ * Troca o cartão da assinatura SEM cobrar mensalidade e SEM mudar a data de
+ * renovação. A Orders API só armazena cartão junto de uma cobrança, então é
+ * feita uma cobrança de validação de R$ 1,00 (INITIAL + store) que é
+ * estornada na hora; só o cartão armazenado (CARD_...) é aproveitado.
+ */
+export async function trocarCartaoAssinatura(
+  _anterior: EstadoAssinatura,
+  formData: FormData
+): Promise<EstadoAssinatura> {
+  const usuario = await exigirUsuario();
+  if (!pagbankConfigurado()) return { erro: MSG_NAO_CONFIGURADO };
+
+  const assinatura = await db.assinatura.findUnique({
+    where: { usuarioId: usuario.id },
+  });
+  if (!assinatura || assinatura.status !== "ativa") {
+    return { erro: "Só é possível trocar o cartão de uma assinatura ativa." };
+  }
+
+  const dados = esquemaAssinatura.safeParse({
+    titular: formData.get("titular") ?? "",
+    cpf: String(formData.get("cpf") ?? ""),
+    cartaoCriptografado: String(formData.get("cartaoCriptografado") ?? ""),
+    cvv: String(formData.get("cvv") ?? ""),
+    ultimos4: String(formData.get("ultimos4") ?? ""),
+    bandeira: String(formData.get("bandeira") ?? ""),
+  });
+  if (!dados.success) return { erro: dados.error.issues[0].message };
+
+  const pagamento = await db.pagamento.create({
+    data: {
+      usuarioId: usuario.id,
+      tipo: "validacao",
+      valorCentavos: VALOR_VALIDACAO_CARTAO_CENTAVOS,
+      metodo: "cartao",
+    },
+  });
+
+  try {
+    const cobranca = await validarCartaoAssinatura({
+      pagamentoId: pagamento.id,
+      nome: usuario.nome,
+      email: usuario.email,
+      cpf: dados.data.cpf,
+      cartaoCriptografado: dados.data.cartaoCriptografado,
+      cvv: dados.data.cvv,
+      titularCartao: dados.data.titular,
+    });
+
+    await db.pagamento.update({
+      where: { id: pagamento.id },
+      data: {
+        pagbankOrderId: cobranca.orderId,
+        pagbankChargeId: cobranca.chargeId,
+        status: cobranca.pago ? "aprovado" : "recusado",
+      },
+    });
+
+    if (!cobranca.pago) {
+      return {
+        erro: cobranca.motivoRecusa
+          ? `O cartão novo foi recusado: ${cobranca.motivoRecusa}. A assinatura segue no cartão atual.`
+          : "O cartão novo foi recusado. A assinatura segue no cartão atual.",
+      };
+    }
+
+    // Estorna a validação. Logo após a cobrança o PagBank pode responder
+    // refund_temporarily_unavailable, então retenta com pausas curtas; o que
+    // sobrar é reprocessado pelo cron de renovações até concluir.
+    let estornada = false;
+    if (cobranca.chargeId) {
+      for (const atrasoMs of [0, 3000, 7000]) {
+        if (atrasoMs > 0) {
+          await new Promise((r) => setTimeout(r, atrasoMs));
+        }
+        try {
+          await estornarCobranca(
+            cobranca.chargeId,
+            VALOR_VALIDACAO_CARTAO_CENTAVOS
+          );
+          estornada = true;
+          break;
+        } catch (e) {
+          console.error("trocarCartaoAssinatura: estorno falhou", {
+            pagamentoId: pagamento.id,
+            chargeId: cobranca.chargeId,
+            erro: e,
+          });
+        }
+      }
+    }
+    if (estornada) {
+      await db.pagamento.update({
+        where: { id: pagamento.id },
+        data: { status: "estornado" },
+      });
+    }
+
+    if (!cobranca.cartaoId) {
+      // Sem CARD_ armazenado a troca não tem efeito: não mexe na assinatura.
+      console.error("trocarCartaoAssinatura: cobrança paga sem card.id", {
+        pagamentoId: pagamento.id,
+      });
+      return {
+        erro: "Não foi possível armazenar o cartão novo. A assinatura segue no cartão atual; tente de novo.",
+      };
+    }
+
+    // Só o cartão muda: a data da próxima cobrança fica exatamente como está.
+    await db.assinatura.update({
+      where: { usuarioId: usuario.id },
+      data: {
+        pagbankCartaoId: cobranca.cartaoId,
+        cpfTitular: dados.data.cpf,
+        cartaoBandeira: cobranca.bandeira ?? dados.data.bandeira ?? null,
+        cartaoUltimos4: cobranca.ultimos4 ?? dados.data.ultimos4 ?? null,
+      },
+    });
+
+    revalidatePath("/app", "layout");
+    return { ok: true };
+  } catch (e) {
+    console.error("trocarCartaoAssinatura:", e);
+    await db.pagamento
+      .update({ where: { id: pagamento.id }, data: { status: "cancelado" } })
+      .catch(() => {});
+    if (e instanceof ErroPagbank && e.status >= 400 && e.status < 500) {
+      const detalhe = e.descricao();
+      return {
+        erro: detalhe
+          ? `O PagBank recusou o cartão novo: ${detalhe}`
+          : "O PagBank recusou os dados do cartão novo. Confira e tente de novo.",
+      };
+    }
+    return {
+      erro: "Não foi possível trocar o cartão agora. Tente de novo em instantes.",
+    };
   }
 }

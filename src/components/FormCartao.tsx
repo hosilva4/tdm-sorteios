@@ -26,6 +26,22 @@ function bandeiraDoNumero(numero: string): string {
   return "";
 }
 
+/** "1226" → "12/26" conforme o usuário digita. */
+function mascaraValidade(valor: string): string {
+  const d = valor.replace(/\D/g, "").slice(0, 4);
+  return d.length >= 3 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+}
+
+/** "40132417812" → "401.324.178-12" conforme o usuário digita. */
+function mascaraCpf(valor: string): string {
+  return valor
+    .replace(/\D/g, "")
+    .slice(0, 11)
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
+}
+
 interface Props {
   chavePublica: string;
   textoBotao: string;
@@ -56,6 +72,8 @@ export function FormCartao({
   const [enviando, setEnviando] = useState(false);
   const [sucesso, setSucesso] = useState(false);
   const [sdkPronto, setSdkPronto] = useState(false);
+  const [validade, setValidade] = useState("");
+  const [cpf, setCpf] = useState("");
 
   async function aoEnviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -123,7 +141,10 @@ export function FormCartao({
     <>
       <Script
         src="https://assets.pagseguro.com.br/checkout-sdk-js/rc/dist/browser/pagseguro.min.js"
-        onLoad={() => setSdkPronto(true)}
+        // onReady (e não onLoad): dispara também quando o componente remonta
+        // com o SDK já carregado (ex.: reabrir o modal de troca de cartão);
+        // com onLoad o botão ficava preso em "Carregando pagamento…".
+        onReady={() => setSdkPronto(true)}
       />
       {erro && <div className="aviso-erro">{erro}</div>}
       <form onSubmit={aoEnviar}>
@@ -158,7 +179,11 @@ export function FormCartao({
               name="validade"
               placeholder="09/29"
               autoComplete="cc-exp"
+              inputMode="numeric"
               pattern="\d{2}\s*/\s*\d{2,4}"
+              maxLength={5}
+              value={validade}
+              onChange={(e) => setValidade(mascaraValidade(e.target.value))}
               required
             />
           </div>
@@ -187,6 +212,9 @@ export function FormCartao({
             name="cpf"
             inputMode="numeric"
             placeholder="000.000.000-00"
+            maxLength={14}
+            value={cpf}
+            onChange={(e) => setCpf(mascaraCpf(e.target.value))}
             required
           />
         </div>
